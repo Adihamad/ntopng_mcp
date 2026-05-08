@@ -19,11 +19,12 @@ from mcp.server.sse import SseServerTransport
 from mcp import types
 
 # ── Configuration (set via Docker environment variables) ──────────────────────
-NTOPNG_URL   = os.getenv("NTOPNG_URL",  "http://192.168.1.7:3001")
-NTOPNG_USER  = os.getenv("NTOPNG_USER", "admin")
-NTOPNG_PASS  = os.getenv("NTOPNG_PASS", "")
-DEFAULT_IFID = int(os.getenv("NTOPNG_IFID", "3"))
-PORT         = int(os.getenv("MCP_PORT", "3002"))
+NTOPNG_URL    = os.getenv("NTOPNG_URL",   "http://192.168.1.7:3001")
+NTOPNG_USER   = os.getenv("NTOPNG_USER",  "admin")
+NTOPNG_PASS   = os.getenv("NTOPNG_PASS",  "")
+NTOPNG_TOKEN  = os.getenv("NTOPNG_TOKEN", "")   # preferred: REST API token
+DEFAULT_IFID  = int(os.getenv("NTOPNG_IFID", "3"))
+PORT          = int(os.getenv("MCP_PORT", "3002"))
 # ──────────────────────────────────────────────────────────────────────────────
 
 session = requests.Session()
@@ -31,35 +32,57 @@ _authenticated = False
 
 
 def authenticate() -> bool:
-    """Log in to ntopng and store the session cookie."""
+    """Log in to ntopng via CSRF-aware form login and store session cookie."""
     global _authenticated
     try:
+        import re
+        # Step 1: fetch login page and extract CSRF token
+        r = session.get(f"{NTOPNG_URL}/lua/login.lua", timeout=15)
+        csrf = ""
+        match = re.search(r'name=["\']csrf["\'][^>]*value=["\']([^"\']+)["\']|value=["\']([^"\']+)["\'][^>]*name=["\']csrf["\']', r.text)
+        if match:
+            csrf = match.group(1) or match.group(2)
+
+        # Step 2: POST credentials + CSRF
         r = session.post(
             f"{NTOPNG_URL}/lua/login.lua",
-            data={"user": NTOPNG_USER, "password": NTOPNG_PASS, "referer": "/"},
+            data={"user": NTOPNG_USER, "password": NTOPNG_PASS, "csrf": csrf, "referer": "/"},
             timeout=15,
             allow_redirects=True,
         )
-        # If we get redirected away from login page, auth worked
-        _authenticated = "login" not in r.url
+        _authenticated = "<title>Welcome to ntopng" not in r.text
         return _authenticated
-    except Exception as e:
+    except Exception:
         return False
 
 
 def api(endpoint: str, params: dict = None) -> dict:
     """Make an authenticated GET request to the ntopng REST API."""
     global _authenticated
+    url = f"{NTOPNG_URL}{endpoint}"
+    p = params or {}
+
+    # Preferred: token auth via Authorization header
+    if NTOPNG_TOKEN:
+        headers = {"Authorization": f"Token {NTOPNG_TOKEN}"}
+        try:
+            r = requests.get(url, params=p, headers=headers, timeout=15)
+            r.raise_for_status()
+            try:
+                return r.json()
+            except Exception:
+                return {"error": f"Non-JSON response (status {r.status_code})", "raw": r.text[:500]}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # Fallback: session cookie login
     if not _authenticated:
         authenticate()
-
-    url = f"{NTOPNG_URL}{endpoint}"
     try:
-        r = session.get(url, params=params or {}, timeout=15)
-        # If we got the login page, re-authenticate and retry once
-        if r.status_code == 200 and "login" in r.text[:200].lower() and "<html" in r.text[:50].lower():
+        r = session.get(url, params=p, timeout=15)
+        if r.status_code == 200 and "<title>Welcome to ntopng" in r.text:
             authenticate()
-            r = session.get(url, params=params or {}, timeout=15)
+            r = session.get(url, params=p, timeout=15)
         r.raise_for_status()
         try:
             return r.json()
