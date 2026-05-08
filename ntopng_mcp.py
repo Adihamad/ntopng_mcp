@@ -9,7 +9,6 @@ import os
 import json
 import asyncio
 import requests
-from requests.auth import HTTPBasicAuth
 
 import uvicorn
 from starlette.applications import Starlette
@@ -27,16 +26,40 @@ DEFAULT_IFID = int(os.getenv("NTOPNG_IFID", "3"))
 PORT         = int(os.getenv("MCP_PORT", "3002"))
 # ──────────────────────────────────────────────────────────────────────────────
 
+session = requests.Session()
+_authenticated = False
+
+
+def authenticate() -> bool:
+    """Log in to ntopng and store the session cookie."""
+    global _authenticated
+    try:
+        r = session.post(
+            f"{NTOPNG_URL}/lua/login.lua",
+            data={"user": NTOPNG_USER, "password": NTOPNG_PASS, "referer": "/"},
+            timeout=15,
+            allow_redirects=True,
+        )
+        # If we get redirected away from login page, auth worked
+        _authenticated = "login" not in r.url
+        return _authenticated
+    except Exception as e:
+        return False
+
+
 def api(endpoint: str, params: dict = None) -> dict:
     """Make an authenticated GET request to the ntopng REST API."""
+    global _authenticated
+    if not _authenticated:
+        authenticate()
+
     url = f"{NTOPNG_URL}{endpoint}"
     try:
-        r = requests.get(
-            url,
-            params=params or {},
-            auth=HTTPBasicAuth(NTOPNG_USER, NTOPNG_PASS),
-            timeout=15,
-        )
+        r = session.get(url, params=params or {}, timeout=15)
+        # If we got the login page, re-authenticate and retry once
+        if r.status_code == 200 and "login" in r.text[:200].lower() and "<html" in r.text[:50].lower():
+            authenticate()
+            r = session.get(url, params=params or {}, timeout=15)
         r.raise_for_status()
         try:
             return r.json()
