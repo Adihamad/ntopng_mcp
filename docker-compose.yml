@@ -5,8 +5,7 @@ services:
     image: ghcr.io/adihamad/ntopng_mcp:latest
     container_name: ntopng-mcp
     restart: unless-stopped
-    ports:
-      - "3002:3002"
+    network_mode: host
     environment:
       - NTOPNG_URL=${NTOPNG_URL}
       - NTOPNG_USER=${NTOPNG_USER}
