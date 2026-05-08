@@ -232,7 +232,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = json.dumps(results, indent=2)
 
     elif name == "get_interfaces":
-        data = api("/lua/rest/v2/get/interface/list.lua")
+        data = api("/lua/rest/v2/get/ntopng/interfaces.lua")
         result = ok(data)
 
     elif name == "get_interface_stats":
@@ -247,7 +247,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             "currentPage": arguments.get("currentPage", 1),
             "perPage": min(arguments.get("perPage", 25), 100),
         }
-        data = api("/lua/rest/v2/get/host/list.lua", params)
+        data = api("/lua/rest/v2/get/host/active.lua", params)
         result = ok(data)
 
     elif name == "get_host_details":
@@ -276,15 +276,16 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             "currentPage": arguments.get("currentPage", 1),
             "perPage": min(arguments.get("perPage", 25), 100),
         }
-        data = api("/lua/rest/v2/get/alert/list/engaged.lua", params)
+        data = api("/lua/rest/v2/get/all/alert/list.lua", params)
         result = ok(data)
 
     elif name == "get_top_hosts":
-        data = api("/lua/rest/v2/get/interface/top/hosts.lua", {"ifid": ifid})
+        params = {"ifid": ifid, "max_hits": 10}
+        data = api("/lua/rest/v2/get/host/active.lua", params)
         result = ok(data)
 
     elif name == "get_top_applications":
-        data = api("/lua/rest/v2/get/interface/top/applications.lua", {"ifid": ifid})
+        data = api("/lua/rest/v2/get/interface/l7/stats.lua", {"ifid": ifid})
         result = ok(data)
 
     elif name == "search_host":
