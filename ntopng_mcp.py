@@ -62,10 +62,10 @@ def api(endpoint: str, params: dict = None) -> dict:
     url = f"{NTOPNG_URL}{endpoint}"
     p = params or {}
 
-    # Preferred: token auth via query parameter
+    # Preferred: token auth via query parameter (ntopng uses auth_token)
     if NTOPNG_TOKEN:
         try:
-            p_with_token = {**p, "token": NTOPNG_TOKEN}
+            p_with_token = {**p, "auth_token": NTOPNG_TOKEN}
             r = requests.get(url, params=p_with_token, timeout=15)
             r.raise_for_status()
             try:
@@ -110,6 +110,11 @@ server = Server("ntopng")
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
+        types.Tool(
+            name="debug_config",
+            description="Show current configuration and test raw connectivity to ntopng.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
         types.Tool(
             name="get_interfaces",
             description="List all network interfaces being monitored by ntopng. Use this first to confirm the correct interface ID.",
@@ -220,7 +225,22 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     ifid = arguments.get("ifid", DEFAULT_IFID)
     result = ""
 
-    if name == "get_interfaces":
+    if name == "debug_config":
+        try:
+            r = requests.get(f"{NTOPNG_URL}/lua/rest/v2/get/interface/list.lua",
+                           params={"auth_token": NTOPNG_TOKEN}, timeout=15)
+            result = json.dumps({
+                "ntopng_url": NTOPNG_URL,
+                "ntopng_user": NTOPNG_USER,
+                "token_set": bool(NTOPNG_TOKEN),
+                "token_preview": NTOPNG_TOKEN[:6] + "..." if NTOPNG_TOKEN else "NOT SET",
+                "http_status": r.status_code,
+                "response_preview": r.text[:300],
+            }, indent=2)
+        except Exception as e:
+            result = json.dumps({"error": str(e)})
+
+    elif name == "get_interfaces":
         data = api("/lua/rest/v2/get/interface/list.lua")
         result = ok(data)
 
