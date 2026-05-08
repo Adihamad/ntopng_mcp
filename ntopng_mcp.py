@@ -62,27 +62,8 @@ def api(endpoint: str, params: dict = None) -> dict:
     url = f"{NTOPNG_URL}{endpoint}"
     p = params or {}
 
-    # Preferred: token auth via query parameter (ntopng uses auth_token)
-    if NTOPNG_TOKEN:
-        try:
-            p_with_token = {**p, "auth_token": NTOPNG_TOKEN}
-            r = requests.get(url, params=p_with_token, timeout=15)
-            r.raise_for_status()
-            try:
-                return r.json()
-            except Exception:
-                return {"error": f"Non-JSON response (status {r.status_code})", "raw": r.text[:500]}
-        except Exception as e:
-            return {"error": str(e)}
-
-    # Fallback: session cookie login
-    if not _authenticated:
-        authenticate()
     try:
-        r = session.get(url, params=p, timeout=15)
-        if r.status_code == 200 and "<title>Welcome to ntopng" in r.text:
-            authenticate()
-            r = session.get(url, params=p, timeout=15)
+        r = requests.get(url, params=p, timeout=15)
         r.raise_for_status()
         try:
             return r.json()
