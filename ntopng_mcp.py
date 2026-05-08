@@ -226,19 +226,60 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     result = ""
 
     if name == "debug_config":
-        try:
-            r = requests.get(f"{NTOPNG_URL}/lua/rest/v2/get/interface/list.lua",
-                           params={"auth_token": NTOPNG_TOKEN}, timeout=15)
-            result = json.dumps({
+        import re
+        test_url = f"{NTOPNG_URL}/lua/rest/v2/get/interface/list.lua"
+        results = {
+            "config": {
                 "ntopng_url": NTOPNG_URL,
-                "ntopng_user": NTOPNG_USER,
                 "token_set": bool(NTOPNG_TOKEN),
                 "token_preview": NTOPNG_TOKEN[:6] + "..." if NTOPNG_TOKEN else "NOT SET",
-                "http_status": r.status_code,
-                "response_preview": r.text[:300],
-            }, indent=2)
+            },
+            "auth_tests": {}
+        }
+
+        def is_json(r):
+            try: r.json(); return True
+            except: return False
+
+        def test(label, **kwargs):
+            try:
+                r = requests.get(test_url, timeout=10, **kwargs)
+                return {"status": r.status_code, "json": is_json(r), "preview": r.text[:80]}
+            except Exception as e:
+                return {"error": str(e)}
+
+        # Test 1: auth_token param
+        results["auth_tests"]["1_auth_token_param"] = test("auth_token", params={"auth_token": NTOPNG_TOKEN})
+        # Test 2: token param
+        results["auth_tests"]["2_token_param"] = test("token", params={"token": NTOPNG_TOKEN})
+        # Test 3: basic auth
+        results["auth_tests"]["3_basic_auth"] = test("basic", auth=(NTOPNG_USER, NTOPNG_PASS))
+        # Test 4: Authorization header Token
+        results["auth_tests"]["4_header_token"] = test("header_token", headers={"Authorization": f"Token {NTOPNG_TOKEN}"})
+        # Test 5: Authorization header Bearer
+        results["auth_tests"]["5_header_bearer"] = test("header_bearer", headers={"Authorization": f"Bearer {NTOPNG_TOKEN}"})
+        # Test 6: session login with CSRF
+        try:
+            s = requests.Session()
+            login_page = s.get(f"{NTOPNG_URL}/lua/login.lua", timeout=10)
+            csrf = ""
+            for pat in [r'name=["\']csrf["\'][^>]*value=["\']([^"\']+)["\']',
+                        r'value=["\']([^"\']+)["\'][^>]*name=["\']csrf["\']',
+                        r'"csrf"\s*:\s*"([^"]+)"']:
+                m = re.search(pat, login_page.text)
+                if m: csrf = m.group(1); break
+            s.post(f"{NTOPNG_URL}/lua/login.lua",
+                   data={"user": NTOPNG_USER, "password": NTOPNG_PASS, "csrf": csrf},
+                   timeout=10, allow_redirects=True)
+            r = s.get(test_url, timeout=10)
+            results["auth_tests"]["6_session_csrf"] = {
+                "csrf_found": csrf[:10] + "..." if csrf else "NOT FOUND",
+                "status": r.status_code, "json": is_json(r), "preview": r.text[:80]
+            }
         except Exception as e:
-            result = json.dumps({"error": str(e)})
+            results["auth_tests"]["6_session_csrf"] = {"error": str(e)}
+
+        result = json.dumps(results, indent=2)
 
     elif name == "get_interfaces":
         data = api("/lua/rest/v2/get/interface/list.lua")
