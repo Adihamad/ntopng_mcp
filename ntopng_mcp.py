@@ -62,11 +62,11 @@ def api(endpoint: str, params: dict = None) -> dict:
     url = f"{NTOPNG_URL}{endpoint}"
     p = params or {}
 
-    # Preferred: token auth via Authorization header
+    # Preferred: token auth via query parameter
     if NTOPNG_TOKEN:
-        headers = {"Authorization": f"Token {NTOPNG_TOKEN}"}
         try:
-            r = requests.get(url, params=p, headers=headers, timeout=15)
+            p_with_token = {**p, "token": NTOPNG_TOKEN}
+            r = requests.get(url, params=p_with_token, timeout=15)
             r.raise_for_status()
             try:
                 return r.json()
