@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  ntopng-mcp:
+    image: ghcr.io/adihamad/ntopng_mcp:latest
+    container_name: ntopng-mcp
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - NTOPNG_URL=${NTOPNG_URL}
+      - NTOPNG_USER=${NTOPNG_USER}
+      - NTOPNG_PASS=${NTOPNG_PASS}
+      - NTOPNG_IFID=${NTOPNG_IFID:-3}
+      - MCP_PORT=3002
