@@ -38,11 +38,14 @@ def api(endpoint: str, params: dict = None) -> dict:
             timeout=15,
         )
         r.raise_for_status()
-        return r.json()
+        try:
+            return r.json()
+        except Exception:
+            return {"error": f"Non-JSON response (status {r.status_code})", "raw": r.text[:500]}
     except requests.exceptions.ConnectionError:
         return {"error": f"Cannot connect to ntopng at {NTOPNG_URL}"}
     except requests.exceptions.HTTPError as e:
-        return {"error": f"HTTP {r.status_code}: {str(e)}"}
+        return {"error": f"HTTP {r.status_code}: {str(e)}", "raw": r.text[:500]}
     except Exception as e:
         return {"error": str(e)}
 
