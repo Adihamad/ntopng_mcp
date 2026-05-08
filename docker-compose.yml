@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   ntopng-mcp:
-    build: .
+    image: ghcr.io/adihamad/ntopng_mcp:latest
     container_name: ntopng-mcp
     restart: unless-stopped
     ports:
